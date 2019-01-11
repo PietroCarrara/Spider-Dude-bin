@@ -901,9 +901,9 @@ ApplicationMain.create = function(config) {
 	ManifestResources.init(config);
 	var _this = app.meta;
 	if(__map_reserved["build"] != null) {
-		_this.setReserved("build","3");
+		_this.setReserved("build","5");
 	} else {
-		_this.h["build"] = "3";
+		_this.h["build"] = "5";
 	}
 	var _this1 = app.meta;
 	if(__map_reserved["company"] != null) {
@@ -5436,6 +5436,7 @@ flixel_FlxState.prototype = $extend(flixel_group_FlxTypedGroup.prototype,{
 	,__properties__: $extend(flixel_group_FlxTypedGroup.prototype.__properties__,{set_bgColor:"set_bgColor",get_bgColor:"get_bgColor"})
 });
 var PlayState = function(MaxSize) {
+	this.random = new flixel_math_FlxRandom();
 	flixel_FlxState.call(this,MaxSize);
 };
 $hxClasses["PlayState"] = PlayState;
@@ -5445,6 +5446,8 @@ PlayState.__super__ = flixel_FlxState;
 PlayState.prototype = $extend(flixel_FlxState.prototype,{
 	'char': null
 	,platforms: null
+	,walls: null
+	,random: null
 	,create: function() {
 		flixel_FlxState.prototype.create.call(this);
 		this["char"] = new entities_Character();
@@ -5459,23 +5462,23 @@ PlayState.prototype = $extend(flixel_FlxState.prototype,{
 		}
 		this.get_camera().follow(PlayState.camTarget,flixel_FlxCameraFollowStyle.LOCKON,0.1);
 		this.platforms = new flixel_group_FlxTypedGroup();
-		this.platforms.add(new entities_Platform(-90,-50,60,20));
 		this.platforms.add(new entities_Platform(0,200,20,20));
 		this.add(this.platforms);
 		this.add(new entities_JumpIndicator(this["char"],70));
-		var _this1 = flixel_FlxG.worldBounds;
-		_this1.x = PlayState.camTarget.x - flixel_FlxG.width / 2;
-		_this1.y = PlayState.camTarget.y - flixel_FlxG.height / 2;
-		_this1.width = flixel_FlxG.width;
-		_this1.height = flixel_FlxG.height;
 	}
 	,update: function(dt) {
 		flixel_FlxState.prototype.update.call(this,dt);
 		flixel_FlxG.overlap(this["char"],this.platforms,$bind(this,this.snap),flixel_FlxObject.separate);
 	}
 	,snap: function($char,platform) {
-		haxe_Log.trace("Colliding width:",{ fileName : "PlayState.hx", lineNumber : 46, className : "PlayState", methodName : "snap", customParams : [platform]});
 		$char.snap(platform);
+		var newPlat = new entities_Platform(this.random["float"](-flixel_FlxG.width / 2,flixel_FlxG.width / 2),PlayState.camTarget.y,50,20);
+		this.platforms.add(newPlat);
+		var _this = flixel_FlxG.worldBounds;
+		_this.x = PlayState.camTarget.x - flixel_FlxG.width / 2;
+		_this.y = PlayState.camTarget.y - flixel_FlxG.height / 2;
+		_this.width = flixel_FlxG.width;
+		_this.height = flixel_FlxG.height;
 	}
 	,__class__: PlayState
 });
@@ -5485,11 +5488,10 @@ PlayerRocket.__name__ = ["PlayerRocket"];
 PlayerRocket.update = function($char) {
 	var touch = TouchInput.getTouch();
 	if(touch != null) {
-		var angle = $char.getCenter().angleBetween(touch.position) - 90;
-		angle = flixel_math_FlxAngle.wrapAngle(angle);
-		angle *= Math.PI / 180;
-		if(angle > 0) {
-			PlayerRocket.angle = angle;
+		PlayerRocket.angle = $char.getCenter().angleBetween(touch.position) - 90;
+		PlayerRocket.angle = flixel_math_FlxAngle.wrapAngle(PlayerRocket.angle);
+		PlayerRocket.angle = PlayerRocket.angle * (Math.PI / 180);
+		if(PlayerRocket.angle > 0) {
 			var Target = touch.position;
 			var dx = $char.x + $char.origin.x - Target.x;
 			var dy = $char.y + $char.origin.y - Target.y;
@@ -5500,9 +5502,8 @@ PlayerRocket.update = function($char) {
 			PlayerRocket.force = PlayerRocket.force / (flixel_FlxG.initialWidth / 2);
 			PlayerRocket.force = Math.min(1,PlayerRocket.force);
 			if(touch.justReleased) {
-				haxe_Log.trace("Jumping now!",{ fileName : "PlayerRocket.hx", lineNumber : 32, className : "PlayerRocket", methodName : "update"});
-				$char.velocity.set_x(-Math.cos(angle) * $char.maxJumpForce * PlayerRocket.force);
-				$char.velocity.set_y(-Math.sin(angle) * $char.maxJumpForce * PlayerRocket.force);
+				$char.velocity.set_x(-Math.cos(PlayerRocket.angle) * $char.maxJumpForce * PlayerRocket.force);
+				$char.velocity.set_y(-Math.sin(PlayerRocket.angle) * $char.maxJumpForce * PlayerRocket.force);
 				$char.canJump = false;
 			}
 		}
@@ -8326,6 +8327,11 @@ entities_Character.prototype = $extend(flixel_FlxSprite.prototype,{
 	,lastPlatform: null
 	,update: function(dt) {
 		flixel_FlxSprite.prototype.update.call(this,dt);
+		if(this.x <= -flixel_FlxG.width / 2) {
+			this.velocity.set_x(Math.abs(this.velocity.x));
+		} else if(this.x + this.get_width() >= flixel_FlxG.width / 2) {
+			this.velocity.set_x(-Math.abs(this.velocity.x));
+		}
 		if(this.canJump) {
 			PlayerRocket.update(this);
 		} else {
@@ -8342,7 +8348,6 @@ entities_Character.prototype = $extend(flixel_FlxSprite.prototype,{
 		if(p == this.lastPlatform) {
 			return;
 		}
-		haxe_Log.trace("Changing platform!",{ fileName : "Character.hx", lineNumber : 54, className : "entities.Character", methodName : "snap"});
 		this.lastPlatform = p;
 		PlayState.camTarget.set_y(this.y + this.get_height() - flixel_FlxG.width / 2);
 	}
@@ -8363,11 +8368,12 @@ entities_JumpIndicator.prototype = $extend(flixel_FlxSprite.prototype,{
 	,update: function(dt) {
 		flixel_FlxSprite.prototype.update.call(this,dt);
 		var t = TouchInput.getTouch();
-		if(t == null) {
+		var angle = PlayerRocket.angle;
+		if(t == null || angle <= 0 || !this.player.canJump) {
 			this.set_visible(false);
 			return;
 		}
-		var angle = PlayerRocket.angle + Math.PI;
+		angle += Math.PI;
 		this.set_angle(angle * (180 / Math.PI) + 90);
 		this.set_x(this.player.getCenter().x - this.get_width() / 2);
 		this.set_y(this.player.getCenter().y - this.get_height() / 2);
@@ -63416,7 +63422,7 @@ var lime_utils_AssetCache = function() {
 	this.audio = new haxe_ds_StringMap();
 	this.font = new haxe_ds_StringMap();
 	this.image = new haxe_ds_StringMap();
-	this.version = 78796;
+	this.version = 645512;
 };
 $hxClasses["lime.utils.AssetCache"] = lime_utils_AssetCache;
 lime_utils_AssetCache.__name__ = ["lime","utils","AssetCache"];
