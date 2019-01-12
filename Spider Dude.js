@@ -901,9 +901,9 @@ ApplicationMain.create = function(config) {
 	ManifestResources.init(config);
 	var _this = app.meta;
 	if(__map_reserved["build"] != null) {
-		_this.setReserved("build","5");
+		_this.setReserved("build","7");
 	} else {
-		_this.h["build"] = "5";
+		_this.h["build"] = "7";
 	}
 	var _this1 = app.meta;
 	if(__map_reserved["company"] != null) {
@@ -5450,17 +5450,23 @@ PlayState.prototype = $extend(flixel_FlxState.prototype,{
 	,random: null
 	,create: function() {
 		flixel_FlxState.prototype.create.call(this);
+		var _this = flixel_FlxG.worldBounds;
+		_this.x = 0;
+		_this.y = 0;
+		_this.width = 0;
+		_this.height = 0;
 		this["char"] = new entities_Character();
 		this.add(this["char"]);
 		PlayState.camTarget = new flixel_FlxObject();
 		this.add(PlayState.camTarget);
-		var _this = this.get_camera();
+		var _this1 = this.get_camera();
 		var point = PlayState.camTarget.getPosition();
-		_this.scroll.set(point.x - _this.width * 0.5,point.y - _this.height * 0.5);
+		_this1.scroll.set(point.x - _this1.width * 0.5,point.y - _this1.height * 0.5);
 		if(point._weak) {
 			point.put();
 		}
 		this.get_camera().follow(PlayState.camTarget,flixel_FlxCameraFollowStyle.LOCKON,0.1);
+		entities_Platform.clearHighest();
 		this.platforms = new flixel_group_FlxTypedGroup();
 		this.platforms.add(new entities_Platform(0,200,20,20));
 		this.add(this.platforms);
@@ -5471,14 +5477,16 @@ PlayState.prototype = $extend(flixel_FlxState.prototype,{
 		flixel_FlxG.overlap(this["char"],this.platforms,$bind(this,this.snap),flixel_FlxObject.separate);
 	}
 	,snap: function($char,platform) {
-		$char.snap(platform);
-		var newPlat = new entities_Platform(this.random["float"](-flixel_FlxG.width / 2,flixel_FlxG.width / 2),PlayState.camTarget.y,50,20);
-		this.platforms.add(newPlat);
+		var success = $char.snap(platform);
 		var _this = flixel_FlxG.worldBounds;
 		_this.x = PlayState.camTarget.x - flixel_FlxG.width / 2;
 		_this.y = PlayState.camTarget.y - flixel_FlxG.height / 2;
 		_this.width = flixel_FlxG.width;
 		_this.height = flixel_FlxG.height;
+		if(success && platform.get_isHighest()) {
+			var newPlat = new entities_Platform(this.random["float"](-flixel_FlxG.width / 2,flixel_FlxG.width / 2),PlayState.camTarget.y,50,20);
+			this.platforms.add(newPlat);
+		}
 	}
 	,__class__: PlayState
 });
@@ -8308,6 +8316,7 @@ flixel_FlxSprite.prototype = $extend(flixel_FlxObject.prototype,{
 	,__properties__: $extend(flixel_FlxObject.prototype.__properties__,{set_clipRect:"set_clipRect",set_color:"set_color",set_blend:"set_blend",set_flipY:"set_flipY",set_flipX:"set_flipX",set_facing:"set_facing",set_alpha:"set_alpha",set_graphic:"set_graphic",set_frames:"set_frames",set_frame:"set_frame",set_pixels:"set_pixels",get_pixels:"get_pixels",set_antialiasing:"set_antialiasing",set_useFramePixels:"set_useFramePixels"})
 });
 var entities_Character = function(x,y) {
+	this.lastXVelocity = 0;
 	this.gravity = 392.;
 	this.maxJumpForce = 600;
 	this.canJump = false;
@@ -8325,6 +8334,7 @@ entities_Character.prototype = $extend(flixel_FlxSprite.prototype,{
 	,maxJumpForce: null
 	,gravity: null
 	,lastPlatform: null
+	,lastXVelocity: null
 	,update: function(dt) {
 		flixel_FlxSprite.prototype.update.call(this,dt);
 		if(this.x <= -flixel_FlxG.width / 2) {
@@ -8337,19 +8347,29 @@ entities_Character.prototype = $extend(flixel_FlxSprite.prototype,{
 		} else {
 			this.acceleration.set_y(this.gravity);
 		}
+		this.lastXVelocity = this.velocity.x;
 	}
 	,getCenter: function() {
 		return new flixel_math_FlxPoint(this.x + this.get_width() / 2,this.y + this.get_height() / 2);
 	}
 	,snap: function(p) {
+		if((this.touching & 4096) <= 0) {
+			if((this.touching & 1) > 0) {
+				this.velocity.set_x(Math.abs(this.lastXVelocity));
+			} else if((this.touching & 16) > 0) {
+				this.velocity.set_x(-Math.abs(this.lastXVelocity));
+			}
+			return false;
+		}
 		this.canJump = true;
 		this.acceleration.set_y(0);
 		this.velocity.set();
 		if(p == this.lastPlatform) {
-			return;
+			return false;
 		}
 		this.lastPlatform = p;
 		PlayState.camTarget.set_y(this.y + this.get_height() - flixel_FlxG.width / 2);
+		return true;
 	}
 	,__class__: entities_Character
 });
@@ -8387,15 +8407,26 @@ entities_JumpIndicator.prototype = $extend(flixel_FlxSprite.prototype,{
 });
 var entities_Platform = function(x,y,width,height) {
 	flixel_FlxSprite.call(this,x,y);
+	if(entities_Platform.highest == null || entities_Platform.highest.y > this.y) {
+		entities_Platform.highest = this;
+	}
 	this.set_immovable(true);
 	this.makeGraphic(Math.round(width),Math.round(height));
 	this.updateHitbox();
 };
 $hxClasses["entities.Platform"] = entities_Platform;
 entities_Platform.__name__ = ["entities","Platform"];
+entities_Platform.highest = null;
+entities_Platform.clearHighest = function() {
+	entities_Platform.highest = null;
+};
 entities_Platform.__super__ = flixel_FlxSprite;
 entities_Platform.prototype = $extend(flixel_FlxSprite.prototype,{
-	__class__: entities_Platform
+	get_isHighest: function() {
+		return this == entities_Platform.highest;
+	}
+	,__class__: entities_Platform
+	,__properties__: $extend(flixel_FlxSprite.prototype.__properties__,{get_isHighest:"get_isHighest"})
 });
 var flixel_IFlxBasic = function() { };
 $hxClasses["flixel.IFlxBasic"] = flixel_IFlxBasic;
@@ -63422,7 +63453,7 @@ var lime_utils_AssetCache = function() {
 	this.audio = new haxe_ds_StringMap();
 	this.font = new haxe_ds_StringMap();
 	this.image = new haxe_ds_StringMap();
-	this.version = 645512;
+	this.version = 108128;
 };
 $hxClasses["lime.utils.AssetCache"] = lime_utils_AssetCache;
 lime_utils_AssetCache.__name__ = ["lime","utils","AssetCache"];
